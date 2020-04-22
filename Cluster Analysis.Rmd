@@ -1,0 +1,392 @@
+---
+title: "Assignment 2"
+output:
+  word_document: default
+  html_notebook: default
+---
+
+Install necessary libraries
+```{r}
+install.packages("tidyverse")
+install.packages("factoextra")
+install.packages("cluster")
+```
+
+Load necessary libraries
+```{r}
+library(tidyverse)  
+library(cluster)    
+library(factoextra)
+library(readr)
+library(gridExtra)
+library(reshape2)
+library(dendextend)
+```
+
+
+Loading the data
+```{r}
+cdata <- read_csv("C:/Schulich/Transfer to Asus/Schulich MBAN D/Winter Term/Multivariate/Assignment/clustdata.csv")
+View(cdata)
+```
+
+Price is character format because of '$' sign. Therefore, converting this column to numeric.
+```{r}
+cdata$Price <- as.numeric(gsub('[$]', '', cdata$Price))
+#View(cdata)
+```
+
+```{r}
+summary(cdata)
+```
+
+```{r}
+cdata_scale = as.data.frame(scale(cdata[,2:6]))
+summary(cdata_scale)
+```
+
+```{r}
+cormat=round(cor(cdata_scale),2)
+head(cormat)
+```
+
+```{r}
+melted_cormat <- melt(cormat)
+head(melted_cormat)
+```
+
+```{r}
+library(ggplot2)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+```
+
+
+Performing principle component analysis to determine important variables
+```{r}
+cdata.pca = prcomp(cdata_scale, center = TRUE,scale. = TRUE)
+summary(cdata.pca)
+cdata.pca
+```
+Plotting the resultant principal components
+```{r}
+par(mfrow=c(1,1), mar=c(3.7,3.7,3.7,3.7))
+biplot(cdata.pca, scale = 0)
+```
+Computing standard deviation and variance of the principal components. Then computing the proportion of variance explained by each principal component.
+```{r}
+std_dev <- cdata.pca$sdev
+pc_var = std_dev^2
+pc_var
+pc_prop_var = pc_var/sum(pc_var)
+pc_prop_var
+```
+From the scree plot above, PC1, PC2, PC3, PC4 explain approximately 98% of the variance. Hence, selecting Weight, Price, Nicotine and CO. It is clear that Weight and Price explain approx 85% of the variance between brands of cigarettes. Nicotine also appears to explains 12% of the variance between different cigerrate brands. CO and tar content explain approx 1% of the variance. From the scree plot, 4 principal components are the best. Hence, CO was selected over Tar as the fourth variable. This is mainly because CO content is a measure of the number of cigarettes smoked by an individual.(https://www.sciencedirect.com/science/article/abs/pii/0306460381900496)
+
+```{r}
+eig.val = get_eigenvalue(cdata.pca)
+eig.val
+```
+
+```{r}
+par(mar=c(7,7,7,7))
+fviz_eig(cdata.pca, addlabels = TRUE, ylim = c(0, 100))
+```
+
+```{r}
+vars_ex = get_pca_var(cdata.pca)
+vars_ex
+```
+
+```{r}
+par(mar=c(6,6,6,6))
+fviz_pca_var(cdata.pca, col.var = "black", rrepel = TRUE)
+```
+
+```{r}
+vars_ex$contrib
+```
+
+```{r}
+rownames(cdata_scale) <- c(cdata$Brand)
+cdata_scale = cdata_scale %>% select(1, 3,5)
+View(cdata_scale)
+```
+
+
+Agglomerative Hierarchical clustering
+```{r}
+m <- c( "average", "single", "complete", "ward")
+names(m) <- c( "average", "single", "complete", "ward")
+
+# function to compute coefficient
+ac <- function(x) {
+  agnes(cdata_scale, method = x)$ac
+}
+
+map_dbl(m, ac)
+```
+
+```{r}
+hc = agnes(cdata_scale, method = "complete")
+pltree(hc, cex = 0.6, hang = -1, main = "Dendrogram of agnes") 
+```
+
+Determining Optimal number of clusters
+```{r}
+#Elbow Method
+fviz_nbclust(cdata_scale, FUN = hcut, method = "wss")
+```
+
+```{r}
+# Average Silhoutte Method
+fviz_nbclust(cdata_scale, FUN = hcut, method = "silhouette")
+```
+
+
+```{r}
+##Since there is no clear elbow,number of clusters can be between 5 and 6. Here k =5
+dist_mat= get_dist(cdata_scale)
+hc_elbow_1 = hclust(dist_mat, method = "complete" )
+
+# Cut tree into 6 groups
+sub_grp_el = cutree(hc_elbow_1, k = 5)
+
+# Number of members in each cluster
+table(sub_grp_el)
+```
+
+```{r}
+cdata %>%
+  mutate(cluster = sub_grp_el)
+```
+
+```{r}
+plot(hc_elbow, cex = 0.6)
+rect.hclust(hc_elbow, k = 5, border = 2:6)
+```
+
+```{r}
+fviz_cluster(list(data = cdata_scale, cluster = sub_grp_el))
+```
+
+
+
+```{r}
+##Since there is no clear elbow,number of clusters can be between 5 and 6. Here k =6
+dist_mat= get_dist(cdata_scale)
+hc_elbow = hclust(dist_mat, method = "complete" )
+
+# Cut tree into 6 groups
+sub_grp_el_2 = cutree(hc_elbow, k = 6)
+
+# Number of members in each cluster
+table(sub_grp_el_2)
+```
+
+```{r}
+cdata %>%
+  mutate(cluster = sub_grp_el_2)
+```
+
+```{r}
+plot(hc_elbow, cex = 0.6)
+rect.hclust(hc_elbow, k = 6, border = 2:7)
+```
+
+```{r}
+fviz_cluster(list(data = cdata_scale, cluster = sub_grp_el_2))
+```
+
+
+```{r}
+#Optimal number of clusters based on Sil is 9
+dist_mat= get_dist(cdata_scale)
+hc_sil = hclust(dist_mat, method = "complete" )
+
+# Cut tree into 5 groups
+sub_grp = cutree(hc_sil, k = 9)
+
+# Number of members in each cluster
+table(sub_grp)
+```
+
+```{r}
+cdata %>%
+  mutate(cluster = sub_grp)
+```
+
+```{r}
+plot(hc_elbow, cex = 0.6)
+rect.hclust(hc_sil, k = 9, border = 2:10)
+```
+
+```{r}
+fviz_cluster(list(data = cdata_scale, cluster = sub_grp))
+```
+
+
+Final Model
+```{r}
+#Optimal number of clusters based on Sil is 9
+dist_mat= get_dist(cdata_scale)
+hc_sil = hclust(dist_mat, method = "complete" )
+
+# Cut tree into 5 groups
+sub_grp = cutree(hc_sil, k = 5)
+
+# Number of members in each cluster
+table(sub_grp)
+cdata_clustered = cdata %>%
+  mutate(cluster = sub_grp)
+```
+
+
+```{r}
+cdata_clustered
+```
+
+```{r}
+cdata_clustered %>%
+	group_by(cluster) %>%
+	summarise()
+```
+```{r}
+install.packages("clValid")
+```
+
+
+```{r}
+library(clValid)
+
+```
+
+```{r}
+k5  = kmeans(cdata_scale, centers = 5, nstart = 25)
+di_k5 = dunn(clusters = k5$cluster, Data = cdata_scale)
+k6  = kmeans(cdata_scale, centers = 6, nstart = 25)
+di_k6 = dunn(clusters = k6$cluster, Data = cdata_scale)
+k9  = kmeans(cdata_scale, centers = 9, nstart = 25)
+di_k9 = dunn(clusters = k9$cluster, Data = cdata_scale)
+labs = c('DI K5','DI K6','DI K9')
+k= c(di_k5,di_k6,di_k9)
+rbind(labs,k)
+```
+
+```{r}
+k5$tot.withinss
+```
+
+```{r}
+kmeans_mod = c("K5","K6","K9")
+wss = c(k5$tot.withinss,k6$tot.withinss,k9$tot.withinss)
+bss = c(k5$betweenss,k6$betweenss,k9$betweenss)
+mods=data.frame(kmeans_mod,wss,bss)
+```
+
+```{r}
+mods
+```
+
+```{r}
+p5 <- fviz_cluster(list(data = cdata_scale, cluster = k5$cluster)) + ggtitle("k = 5")
+
+p6 <- fviz_cluster(list(data = cdata_scale, cluster = k6$cluster)) + ggtitle("k = 6")
+p9 <- fviz_cluster(list(data = cdata_scale, cluster = k9$cluster)) + ggtitle("k = 9")
+
+```
+
+```{r}
+p5
+p6
+p9
+```
+
+
+Final Model
+```{r}
+k9  = kmeans(cdata_scale, centers = 9, nstart = 25)
+fviz_cluster(list(data = cdata_scale, cluster = k9$cluster)) + ggtitle("k = 9")
+
+```
+
+```{r}
+cdata_scale %>%
+  group_by(cdata_cluster$cluster) %>%
+   summarise(Mean_Price = mean(cdata_scale$Price),Mean_Wt = mean(cdata_scale$Weight),Mean_Tar = mean(cdata_scale$Tar))
+```
+```{r}
+cdata_cluster
+```
+
+
+```{r}
+cdata_cluster = cdata %>%
+  mutate(cluster = k9$cluster)
+```
+
+```{r}
+cdata$cluster = cdata_cluster$cluster
+```
+
+```{r}
+f_vars = cdata %>% select(2,4,6,7)
+
+f_vars$f_brand = cdata$cluster
+
+cmeans = aggregate(f_vars[,1:3],by=list(f_vars$f_brand),mean)
+cmeans
+#aggregate(cdata %>% select(1,3,5,7), by=list(cdata$cluster),FUN=mean, na.rm=TRUE)
+```
+
+```{r}
+# sort by Tar
+cmeans[order(cmeans$Tar),]
+```
+
+```{r}
+cl1  = cdata[cdata$cluster == 1, ]
+cl1 = cl1[order(cl1$Tar),]
+cl1
+```
+
+```{r}
+cl2  = cdata[cdata$cluster == 2, ]
+cl2 = cl2[order(cl2$Tar),]
+cl2
+
+cl3  = cdata[cdata$cluster == 3, ]
+cl3 = cl3[order(cl3$Tar),]
+cl3
+
+cl4  = cdata[cdata$cluster == 4, ]
+cl4 = cl4[order(cl4$Tar),]
+cl4
+
+cl5  = cdata[cdata$cluster == 5, ]
+cl5 = cl5[order(cl5$Tar),]
+cl5
+
+cl6  = cdata[cdata$cluster == 6, ]
+cl6 = cl6[order(cl6$Tar),]
+cl6
+
+cl7  = cdata[cdata$cluster == 7, ]
+cl7 = cl7[order(cl7$Tar),]
+cl7
+
+cl8  = cdata[cdata$cluster == 8, ]
+cl8 = cl8[order(cl8$Tar),]
+cl8
+
+cl9  = cdata[cdata$cluster == 9, ]
+cl9 = cl9[order(cl9$Tar),]
+cl9
+```
+
+```{r}
+library(knitr)
+rank_data = rbind(cl2,cl7,cl4,cl5,cl1,cl6,cl8,cl3,cl9)
+kable(rank_data)
+```
+
